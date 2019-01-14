@@ -18,14 +18,14 @@
 // ex:set shiftwidth=4:
 // ex:set expandtab:
 
-#include "excalibur.h"
-
-#include "plugs.h"
-#include "lan91c111.h"
+//#include "excalibur.h"
+//#include "plugs.h"
+#include "eth_driver.h"
 #include <stdio.h> 
 
 // +--------------------------
 // | Debug printing things
+#define PLUGS_DEBUG 1
 
 #if PLUGS_DEBUG
     #define dprint0 printf(" [lan91c111] ")
@@ -37,7 +37,8 @@
     #define dprint1(x,y)
 #endif
 
-
+//typedef void (*ns_plugs_adapter_storage);
+//typedef void (*ns_plugs_network_settings);
 
 // +------------------------
 // | Global storage allocation:
@@ -81,11 +82,10 @@
 
 
 
-#ifndef LAN91C111_REGISTERS_OFFSET
-    #define LAN91C111_REGISTERS_OFFSET 0x0300
-#endif
+#define LAN91C111_REGISTERS_OFFSET 0x0300
+#define LAN91C111_DATA_BUS_WIDTH 16
 
-
+/*
 #if (!defined(LAN91C111_DATA_BUS_WIDTH)) || ((LAN91C111_DATA_BUS_WIDTH != 16) && (LAN91C111_DATA_BUS_WIDTH != 32))
     #error _LAN91C111_DATA_BUS_WIDTH must be defined to 16 or 32
 #endif
@@ -99,10 +99,16 @@
     #define __lan91c111_data_word_type__ volatile unsigned long
     #define __lan91c111_data_word_size__ 4
 #else
-    #define __lan91c111_register__ unsigned int
+*/
+    #define __lan91c111_register__ uint16_t
     #define __lan91c111_data_word_type__ volatile unsigned short
     #define __lan91c111_data_word_size__ 2
+//#endif
+
+#if LAN91C111_REGISTERS_OFFSET > 0
+    unsigned char blank[LAN91C111_REGISTERS_OFFSET];
 #endif
+
 
 typedef volatile struct 
     {
@@ -123,10 +129,6 @@ typedef volatile struct
     // |
     // | Whatever.
     // |
-
-#if LAN91C111_REGISTERS_OFFSET > 0
-    unsigned char blank[LAN91C111_REGISTERS_OFFSET];
-#endif
 
     union
         {
@@ -533,14 +535,14 @@ enum {
 // | four longs, you could malloc a
 // | block and store the pointer.)
 // |
-
+/*
 typedef struct {
   int phy_address;
   int ever_sent_packet;
   int tx_packet;
   int irq_onoff;
 } s_lan91c111_state;
-
+*/
 // +-------------------------------
 // | Local Prototypes
 // |
@@ -580,6 +582,10 @@ static r16 r_read_phy_register
         int phy_address,
         r8 phyreg
         );
+
+//TODO .... -tomx
+void nr_delay(int num) {return ;}
+int nr_setirqenable(int num) {return 0;}
 
 /*
  . Function: r_lan91c111_enable
@@ -629,8 +635,10 @@ void nr_set_multicast (void *hw_base_address)
 int nr_lan91c111_reset
         (
         void *hw_base_address,
-        ns_plugs_adapter_storage *adapter_storage,
-        ns_plugs_network_settings *s
+        //ns_plugs_adapter_storage *adapter_storage,
+        //ns_plugs_network_settings *s
+        void *adapter_storage,
+        void *s
         )
 {
     np_lan91c111 *e = hw_base_address;
@@ -644,15 +652,15 @@ int nr_lan91c111_reset
         // | and poke the chip registers that should disable its
         // | interrupt generation...
 
-        int old_irqenable = nr_setirqenable(0);  // turn of IRQs until we are ready!
+        //int old_irqenable = nr_setirqenable(0);  // turn of IRQs until we are ready!
 
         e->bank_0.np_bank = 0;
         e->bank_0.np_rcr = RCR_SOFTRST;  // soft reset
-        nr_delay(1);                     // a very generous reset pulse
+        //nr_delay(1);                     // a very generous reset pulse
         e->bank_0.np_rcr = 0;            // done with soft reset
-        nr_delay(1);                     // and wait a while afterwards
+        //nr_delay(1);                     // and wait a while afterwards
 
-        nr_setirqenable(old_irqenable);  // restore IRQs to their previous state.
+        //nr_setirqenable(old_irqenable);  // restore IRQs to their previous state.
         }
 
 
@@ -680,7 +688,7 @@ int nr_lan91c111_reset
         goto go_home;
     }
 
-    dprint1("nr_lan91c111_reset: chip id = %s",
+    printf("nr_lan91c111_reset: chip id = %s\n",
             chip_ids[(e->bank_3.np_revision>> 4) & 0x0F]);
 
     
@@ -701,7 +709,7 @@ int nr_lan91c111_reset
     LAN91C111_SELECT_BANK(0, hw_base_address);
 
     /* this should pause enough for the chip to be happy */
-    nr_delay(5);
+    //nr_delay(5);
 
     /* Disable transmit and receive functionality */
     e->bank_0.np_rcr = RCR_CLEAR;
@@ -725,6 +733,8 @@ int nr_lan91c111_reset
 
     // | 1: set the mac address
 
+    //not part of port -tomx
+/*
         {
         host_32 u32;
         host_16 l16;
@@ -737,20 +747,24 @@ int nr_lan91c111_reset
         e->bank_1.np_ia2_3 = swap_bytes((u32 & 0x0000ffff)); 
         e->bank_1.np_ia4_5 = swap_bytes(l16);
         }
+*/
 
     /* Intialize the rpcr register */
 
-    nr_lan91c111_set_led(hw_base_address,adapter_storage,0);
+    //nr_lan91c111_set_led(hw_base_address,adapter_storage,0);
 
     /* Now that its stable, enable the chip: */
 
     r_lan91c111_enable(hw_base_address);
 
+
+    /* no phy to init in qemu ! tomx
     result = r_lan91c111_init_phy
             (
             hw_base_address,
             &sls->phy_address
             );
+    */
 
     if(result) {
           dprint ("Phy initialization failed.");
@@ -763,7 +777,7 @@ int nr_lan91c111_reset
         result = r_allocate_tx_packet(hw_base_address, sls);
         if (result) 
           {
-            dprint ("TX-packet allocation failed.");
+            printf ("TX-packet allocation failed.\n");
             goto go_home;
           }
 
@@ -1396,8 +1410,8 @@ int nr_lan91c111_check_for_events
         (
         void *hardware_base_address,
         ns_plugs_adapter_storage *adapter_storage,
-        nr_plugs_adapter_dispatch_packet_proc proc,
-        void *context
+        int (*process_frame)(r16 *, int)
+        //void *context
         )
 {
     np_lan91c111 *e = hardware_base_address;
@@ -1635,7 +1649,8 @@ check_for_interrupt:
                   }
 
         if(frame_length)
-            result = (proc)(g_frame_buffer,frame_length,context);
+            result = (process_frame)(g_frame_buffer,frame_length);//,context);
+            //result = (proc)(g_frame_buffer,frame_length,context);
 
     } // while(anything to receive)
 
@@ -1720,7 +1735,7 @@ int nr_lan91c111_tx_frame
         (
         void *hardware_base_address,
         ns_plugs_adapter_storage *adapter_storage,
-        char *ethernet_frame,
+        const unsigned char *ethernet_frame,
         int frame_length
         )
     {
@@ -1954,6 +1969,8 @@ int nr_lan91c111_set_irq
     return old_irq_onoff;
     }
 
+//not part of port - tomx
+/*
 ns_plugs_adapter_description ng_lan91c111 =
 {
     &nr_lan91c111_reset,
@@ -1966,10 +1983,6 @@ ns_plugs_adapter_description ng_lan91c111 =
     &nr_lan91c111_set_irq,
     "lan91c111"
 };
-
-
-
-
-
+*/
 
 // end of file
