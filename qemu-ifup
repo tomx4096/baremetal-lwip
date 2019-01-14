@@ -1,0 +1,49 @@
+#!/bin/sh
+
+#
+# script to bring up the tun device in QEMU in bridged mode
+# first parameter is name of tap device (e.g. tap0)
+#
+# some constants specific to the local host ? change to suit your host
+#
+
+ETHNAME='enp0s31f6'
+ETH0IP=10.0.2.15
+GATEWAY=10.0.2.2
+BROADCAST=10.0.2.255
+
+#
+# First take eth0 down, then bring it up with IP 0.0.0.0
+#
+ifconfig $ETHNAME down
+ifconfig $ETHNAME 0.0.0.0 promisc up
+
+#
+# Bring up the tap device (name specified as first argument, by QEMU)
+#
+openvpn --mktun --dev $1 -user 'id -un'
+ifconfig $1 0.0.0.0 promisc up
+
+#
+# create the bridge between eth0 and the tap device
+#
+brctl addbr br0
+brctl addif br0 $ETHNAME
+brctl addif br0 $1
+
+#
+# only a single bridge so loops are not possible, turn off spanning
+# tree protocol
+#
+brctl stp br0 off
+
+#
+# Bring up the bridge with ETH0IP and add the default route
+#
+ifconfig br0 $ETH0IP netmask 255.255.0.0 broadcast $BROADCAST
+route add default gw $GATEWAY
+
+#
+# stop firewall ? comment this out if you don?t use Firestarter
+#
+#service firestarter stop
