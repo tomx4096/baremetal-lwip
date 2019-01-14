@@ -38,11 +38,11 @@
 #define LWIP_HDR_ARCH_H
 
 #ifndef LITTLE_ENDIAN
-#define LITTLE_ENDIAN 1234
+//#define LITTLE_ENDIAN 1234
 #endif
 
 #ifndef BIG_ENDIAN
-#define BIG_ENDIAN 4321
+//#define BIG_ENDIAN 4321
 #endif
 
 #include "arch/cc.h"
